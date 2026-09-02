@@ -72,7 +72,7 @@ The measured framerates were these:
 
 The **naive implementation shows the clearest degradation as the boid count increases**. With visualization disabled, it fell from 2630.82 FPS at 1000 boids to only 81.26 FPS at 40,000 boids. This behavior is consistent with the structure of the naive algorithm: each boid considers every other boid during the neighbor search, so the number of pairwise comparisons grows approximately quadratically with the number of boids.
 
-The grid implementations avoid searching the complete boid population for every boid. Instead, the spatial grid restricts the neighbor search to nearby cells. This adds preprocessing work, including calculating grid indices, sorting, and identifying cell ranges, but reduces the number of candidate boids examined during the neighbor search. This explains why the naive implementation can still be "competitive" at small populations, where its simple implementation avoids grid-management overhead, while the grid approaches become much more advantageous at larger populations.
+The grid implementations avoid searching the complete boid population for every boid; however, that reduction is not free. Each grid-based frame also requires grid-index computation, sorting, cell-range construction, and, for the semi-coherent implementation, data reordering. At small populations, those preprocessing costs can outweigh the savings from reducing neighbor comparisons. This is evident at 1,000 boids, where the naive implementation is competitive with or faster than the grid approaches. As the boid count increases, however, the quadratic growth of the naive all-pairs search becomes dominant and the grid methods pull substantially ahead.
 
 For instance, if we disable visualization at 40,000 boids, the naive implementation measured 81.26 FPS, compared with 755.78 FPS for the scattered grid and 1672.40 FPS for the coherent grid.
 
@@ -111,10 +111,7 @@ We see that the **naive implementation** performed best around 64-128 threads pe
 We also see that the **scattered and coherent grid implementations were considerably more non-monotonic**. For instance, the scattered implementation measured 1428.70 FPS at a block size of 32, fell to 895.38 at 64 and 917.74 at 128, then increased to 1614.36 at 256. The coherent implementation similarly reached its lowest measured value at 128 threads and its highest at 512 threads.
 
 
-I therefore was not able to conclude from these measurements that one block size is universally optimal for all three implementations. The grid-based simulation step contains several different operations, including grid-index computation, sorting, cell-range construction, neighbor searching, and, for the coherent version, data reordering. Changing the global block size affects multiple CUDA kernels whose computational and memory-access behavior is different. Since the benchmark measures the entire application frame rather than timing each individual kernel, the data show the overall performance effect but do not isolate which kernel is responsible for each peak or decline.
-
-
-Likewise, the data do not justify attributing the observed differences specifically to occupancy, cache behavior, or another low-level GPU effect without additional profiling. The results demonstrate that block size and block count affect performance substantially, but that the relationship is implementation-dependent rather than simply the idea that "larger blocks are faster."
+I therefore was not able to identify one block size that was best for all three implementations. The naive implementation was relatively stable from 64 through 256 threads, while the grid implementations showed much larger non-monotonic changes. A grid-based simulation step contains several different operations, including grid-index computation, sorting, cell-range construction, neighbor searching, and, for the coherent version, data reordering. Changing the global block size therefore affects several CUDA kernels with different workloads rather than one uniform computation. Since I measured the complete application frame, these results show the overall performance effect of changing block size but do not isolate which kernel is responsible for each peak or decline.
 
 
 ## 3. Semi-Coherent Uniform Grid Performance
@@ -143,7 +140,7 @@ I expected the semi-coherent representation to have the potential to improve nei
 However, coherence is not free: the semi-coherent implementation must reorder the boid data after sorting during every simulation step. Therefore, improved memory locality during the neighbor search must compensate for the additional reordering work. My measurements suggest that this tradeoff did not consistently favor the coherent implementation at smaller and medium population sizes.
 
 
-The unusually large 40,000-boid coherent result should also be interpreted cautiously because the benchmark did not separately time the reordering and neighbor-search kernels. It demonstrates the measured application-level result, but does not by itself establish which low-level effect caused the improvement.
+The 40,000-boid coherent result is unusually high relative to the rest of its curve, so I retained it rather than smoothing it away. The overall crossover is nevertheless consistent with the expected tradeoff: reordering introduces additional work every frame, while its benefit comes from improving locality during the subsequent neighbor search.
 
 
 
@@ -167,11 +164,11 @@ The comparison used **20,000 boids**, `VISUALIZE = 0`, a block size of 128, Rele
 
 
 
-The 27-cell configuration was approximately this:
+The measured speedup of the 27-cell configuration was approximately this:
 
 `(1105.44 / 917.74 - 1) * 100 = 20.45%`
 
-**faster** than the 8-cell configuration in this experiment.
+Thus, the 27-cell configuration was approximately **20.45% faster** than the 8-cell configuration in this experiment.
 
 
 This result demonstrates why the number of cells checked alone is not sufficient to predict performance. Reducing the cell width increases the number of cell ranges that must be visited, but it also makes each cell spatially smaller. Smaller cells can contain fewer candidate boids, which can reduce the number of unnecessary candidate-distance and rule checks during the neighbor search.
