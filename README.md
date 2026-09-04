@@ -214,7 +214,7 @@ This removes the need to hard-code a particular number of neighboring cells such
 
 ### Performance
 
-I compared grid looping against the corresponding fixed-cell-search implementation at **20,000 boids**, with `VISUALIZE = 0`, a CUDA block size of 128, `DT = 0.2`, Release x64, and Vertical Sync disabled. I recorded five FPS readings for each configuration and report their mean.
+I compared grid looping against the corresponding fixed-cell-search implementation at **20,000 boids**, with `VISUALIZE = 0`, a CUDA block size of 128, `DT = 0.2`, Release x64, and Vertical Sync disabled. I recorded five FPS readings for each configuration and report their mean. For this comparison, I temporarily set `SHARED_MEMORY_OPTIMIZATION = 0` so that the coherent implementation would use either the fixed-search or Grid-Looping kernel according to `GRID_LOOPING_OPTIMIZATION`, and then restored the final extra-credit configuration afterward.
 
 | Implementation | Grid Looping OFF (FPS) | Grid Looping ON (FPS) | Change |
 |:---|---:|---:|---:|
