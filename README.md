@@ -205,11 +205,11 @@ The required implementation and all performance measurements above were complete
 
 ### Implementation
 
-The required grid implementation determines neighboring cells using a fixed search pattern. For the grid-looping optimization. I instead compute the minimum and maximum grid-cell indices that can contain relevant neighbors based on the boid's position and the maximum interaction distance.
+The required grid implementation determines neighboring cells using a fixed search pattern. For the grid-looping optimization, I instead compute the minimum and maximum grid-cell indices that can contain relevant neighbors based on the boid's position and the maximum interaction distance.
 
-For each boid, I first construct the spatial bounds given by its position plus or minus the maximum interaction distance. I convert those bounds into grid coordinates, clamp them to the valid grid range, and then loop from the resulting maximum cell index independently along the x, y, and z directions.
+For each boid, I first construct the spatial bounds given by its position plus or minus the maximum interaction distance. I convert those bounds into grid coordinates, clamp them to the valid grid range, and then loop from the resulting minimum through maximum cell index independently along the x, y, and z directions.
 
-This would remove the need to hard-code a particular number of neighboring cells such as 8 or 27. I implemented this dynamic search for both the scattered and coherent uniform-grid neighbor searches.
+This removes the need to hard-code a particular number of neighboring cells such as 8 or 27. I implemented this dynamic search for both the scattered and coherent uniform-grid neighbor searches.
 
 
 ### Performance
@@ -254,7 +254,7 @@ I combined this implementation with the grid-looping optimization and used dynam
 ### Performance
 
 
-For the final comparison, I tested the coherent grid with shared memory disabled and enabled at `1,000`, `2,500`, `5,000`, `10,000`, `20,000`, and `40,000` boids. Both configurations used `VISUALIZE = 0, `DT = 0.2`, Release x64, Vertical Sync disabled, the grid-looping optimization enabled, and the required baseline grid-cell width of twice the maximum interaction radius.
+For the final comparison, I tested the coherent grid with shared memory disabled and enabled at `1,000`, `2,500`, `5,000`, `10,000`, `20,000`, and `40,000` boids. Both configurations used `VISUALIZE = 0`, `DT = 0.2`, Release x64, Vertical Sync disabled, the grid-looping optimization enabled, and the required baseline grid-cell width of twice the maximum interaction radius.
 
 
 I recorded five FPS readings for every configuration and report their mean.
@@ -300,7 +300,7 @@ I used **20,000 boids** as a development configuration while comparing these sha
 One source of overhead in the initial implementation was that a block could contain considerably more threads than the number of boids available in a grid cell. I therefore tested smaller block sizes specifically for the shared memory kernel. Reducing the shared block size from 128 to 64 threads improved the measured result, and reducing it to 32 threads improved it further. The 32-thread version reached **1646.38 FPS**, approximately **12.85% faster** than the 128-thread dynamic-bounds version, albeit it remained slower than the non-shared baseline.
 
 
-I also experimented with combining four grid cells into one 128-thread CUDA block so that each warp handled one cell. This reduced the number of CUDA blocks launched, but performance fell to *1418.18 FPS**, so I reverted the change.
+I also experimented with combining four grid cells into one 128-thread CUDA block so that each warp handled one cell. This reduced the number of CUDA blocks launched, but performance fell to **1418.18 FPS**, so I reverted the change.
 
 As another experiment, I compacted the sorted grid-cell indices into a list containing only occupied cells and launched shared-memory blocks only for those cells. This avoided launching blocks for empty cells, but constructing the compact list added additional work each simulation step. The resulting **1534.28 FPS** was slower than the simpler 32-thread implementation, so I reverted this optimization as well.
 
@@ -317,7 +317,41 @@ The failed packed-cell and occupied-cell experiments were also useful results. R
 
 
 
+## 3. Visual Stress Testing
 
+After completing the controlled performance experiments above, I also informally increased the number of boids beyond the range used for my required benchmarks. My required boid-count experiments stopped at 40,000 boids, so I wanted to see how the final implementation behaved visually when the flock size was increased substantially further.
+
+
+For these runs, I enabled visualization and used the coherent uniform-grid implementation with both extra-credit optimizations enabled. These recordings are intended as **qualitative stress tests rather than controlled performance measurements**. In particular, the FPS values visible in the window titles are individual application-level readings from the recorded runs and should not be interpreted in the same way as the repeated measurements and averaged results reported in the performance sections above.
+
+### 100,000 Boids
+
+![100,000-boid visual stress test](images/boids_shared_100000.gif)
+
+At 100,000 boids, the simulation remained highly responsive and the flock still exhibited clearly visible spatial structure. Individual groups, gaps, and changes in the overall flock shape remained relatively easy to distinguish despite the much larger number of particles. During the recorded run, the application-level framerate visible in the window was approximately 690 FPS.
+
+
+### 150,000 Boids
+
+![150,000-boid visual stress test](images/boids_shared_150000.gif)
+
+At 150,000 boids, the increase in visual density became considerably more apparent. Large-scale flock structures were still visible, but individual particles and smaller gaps became more difficult to distinguish as more boids occupied the same simulation volume. The application nevertheless remained responsive during the recorded run, with the displayed framerate around 486 FPS.
+
+
+### 200,000 Boids
+
+![200,000-boid visual stress test](images/boids_shared_200000.gif)
+
+At 200,000 boids, the flock became visually very dense. The simulation still produced recognizable large-scale structures and motion, although the number of rendered particles increasingly obscured the finer structure that was much easier to see at lower boid counts. The displayed application-level framerate during the recorded run was approximately 368 FPS.
+
+
+### Observations
+
+These stress tests demonstrate a different aspect of the implementation than the controlled benchmarks above. The formal experiments were designed to compare algorithms under consistent conditions, whereas these runs were intended to explore what happens when the simulation is pushed well beyond the required benchmark range while visualization remains enabled.
+
+The progression from 100,000 to 200,000 boids shows that increasing the flock size affects not only performance but also the readability of the visualization. At 100,000 boids, local structures remain comparatively distinct. By 200,000 boids, the flock appears much more like a dense moving volume, and individual structures become harder to separate visually.
+
+I also tested the simulation informally at **250,000 boids**. I did not include that run as another representative GIF because the three recordings above already illustrate the progression in visual density. None of these high-boid-count runs were included in the controlled performance graphs or used to draw quantitative conclusions about scaling.
 
 
 
