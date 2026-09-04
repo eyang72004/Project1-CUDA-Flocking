@@ -201,6 +201,139 @@ Open the generated Visual Studio solution and build the `cis5650_boids` project 
 
 The required implementation and all performance measurements above were completed **before** attempting extra-credit optimizations.
 
+## 1. Grid-Looping Optimization
+
+### Implementation
+
+The required grid implementation determines neighboring cells using a fixed search pattern. For the grid-looping optimization. I instead compute the minimum and maximum grid-cell indices that can contain relevant neighbors based on the boid's position and the maximum interaction distance.
+
+For each boid, I first construct the spatial bounds given by its position plus or minus the maximum interaction distance. I convert those bounds into grid coordinates, clamp them to the valid grid range, and then loop from the resulting maximum cell index independently along the x, y, and z directions.
+
+This would remove the need to hard-code a particular number of neighboring cells such as 8 or 27. I implemented this dynamic search for both the scattered and coherent uniform-grid neighbor searches.
+
+
+### Performance
+
+I compared grid looping against the corresponding fixed-cell-search implementation at **20,000 boids**, with `VISUALIZE = 0`, a CUDA block size of 128, `DT = 0.2`, Release x64, and Vertical Sync disabled. I recorded five FPS readings for each configuration and report their mean.
+
+| Implementation | Grid Looping OFF (FPS) | Grid Looping ON (FPS) | Change |
+|:---|---:|---:|---:|
+| Scattered Grid | 825.00 | 1561.18 | +89.23% |
+| Coherent Grid | 2179.24 | 2024.48 | -7.10% |
+
+
+
+The scattered-grid implementation improved from **825.00 FPS to 1561.18 FPS**, corresponding to an approximately **89.23% increase**, or about **1.89x** the original framerate.
+
+The coherent implementation, on the other hand, behaved a bit differently. Its measured framerate decreased from **2179.24 FPS to 2024.48 FPS**, an approximately **7.10% reduction**.
+
+
+### Analysis
+
+The scattered result suggests that dynamically restricting the grid-cell search substantially reduced unnecessary neighbor-search work for this configuration. Since the scattered representation must additionally follow the sorted particle-index array to access position and velocity data, avoiding unnecessary candidate cells can eliminate relatively expensive work.
+
+The same optimization did not enhance the coherent implementation in this experiment. Since coherent boid data are already reordered into contiguous grid-cell ranges, accesses during the neighbor search are more direct. Computing separate dynamic grid bounds for each boid introduces additional arithmetic and control flow, and my measurements suggest that this overhead outweighed the reduction in cell traversal for the coherent implementation at 20,000 boids.
+
+
+I did not separately instrument the number of cells visited, candidate boids tested, or memory transactions, so these explanations are hypotheses consistent with the implementation and the measured results rather than isolated measurements of the underlying cause.
+
+
+
+## 2. Shared-Memory Optimization
+
+### Implementation
+
+I implemented an additional coherent uniform-grid neighbor-search kernel that stages neighboring boid position and velocity data in CUDA shared memory.
+
+
+The kernel assigns a grid cell to a CUDA block. Boids belonging to the current cell are processed in chunks, while neighboring-cell data are cooperatively loaded into shared-memory position and velocity arrays. Threads in the block can then reuse the staged neighbor data while evaluating the cohesion, separation, and alignment rules rather than independently retrieving the same neighbor data from global memory.
+
+I combined this implementation with the grid-looping optimization and used dynamic minimum and maximum search bounds for the active boids. The final shared-memory kernel uses **32 threads per block**, while the other simulation kernels retain the default block size of 128 threads.
+
+
+### Performance
+
+
+For the final comparison, I tested the coherent grid with shared memory disabled and enabled at `1,000`, `2,500`, `5,000`, `10,000`, `20,000`, and `40,000` boids. Both configurations used `VISUALIZE = 0, `DT = 0.2`, Release x64, Vertical Sync disabled, the grid-looping optimization enabled, and the required baseline grid-cell width of twice the maximum interaction radius.
+
+
+I recorded five FPS readings for every configuration and report their mean.
+
+| Boids | Shared Memory OFF (FPS) | Shared Memory ON (FPS) |
+|---:|---:|---:|
+| 1,000 | 2308.46 | 2142.68 |
+| 2,500 | 2279.98 | 2061.72 |
+| 5,000 | 1954.68 | 1847.92 |
+| 10,000 | 2420.48 | 1709.16 |
+| 20,000 | 1958.64 | 1590.98 |
+| 40,000 | 1718.66 | 1341.46 |
+
+
+![Shared-Memory Optimization Performance](images/shared_memory_performance.png)
+
+
+Contrary to my initial expectation, **the final shared-memory implementation did not outperform the corresponding non-shared coherent implementation on my RTX 5060 Laptop GPU**. Shared memory reduced measured framerate by approximately **7.18%, 9.57%, 5.46%, 29.39%, 18.77%, and 21.95%**, respectively, across the six tested boid counts.
+
+
+I retained these measurements rather than selecting only configurations for which shared memory appeared favorable.
+
+
+### Optimization Experiments
+
+
+The initial shared-memory implementation was substantially slower than the non-shared implementation at larger boid counts, so I investigated several changes before selecting the final design.
+
+I used **20,000 boids** as a development configuration while comparing these shared-memory designs:
+
+| Shared-Memory Configuration | Mean FPS at 20,000 Boids |
+|:---|---:|
+| Shared Memory OFF baseline | 1958.64 |
+| Initial shared-memory implementation | 1457.42 |
+| Dynamic union bounds, 128 threads | 1458.96 |
+| Dynamic union bounds, 64 threads | 1531.92 |
+| Dynamic union bounds, 32 threads | **1646.38** |
+| Four grid cells packed into one 128-thread block | 1418.18 |
+| Occupied-cell compaction | 1534.28 |
+
+
+
+One source of overhead in the initial implementation was that a block could contain considerably more threads than the number of boids available in a grid cell. I therefore tested smaller block sizes specifically for the shared memory kernel. Reducing the shared block size from 128 to 64 threads improved the measured result, and reducing it to 32 threads improved it further. The 32-thread version reached **1646.38 FPS**, approximately **12.85% faster** than the 128-thread dynamic-bounds version, albeit it remained slower than the non-shared baseline.
+
+
+I also experimented with combining four grid cells into one 128-thread CUDA block so that each warp handled one cell. This reduced the number of CUDA blocks launched, but performance fell to *1418.18 FPS**, so I reverted the change.
+
+As another experiment, I compacted the sorted grid-cell indices into a list containing only occupied cells and launched shared-memory blocks only for those cells. This avoided launching blocks for empty cells, but constructing the compact list added additional work each simulation step. The resulting **1534.28 FPS** was slower than the simpler 32-thread implementation, so I reverted this optimization as well.
+
+
+### Analysis
+
+Shared memory is useful when the reduction in global-memory traffic and the amount of data reuse are large enough to compensate for the work required to stage and synchronize that data. My results demonstrate that using shared memory does not by itself guarantee improved performance.
+
+The coherent implementation already places boids belonging to the same grid cells contiguously in memory. The shared-memory kernel adds cooperative tile loading, synchronization between loads and uses, per-cell block organization, and additional control flow. Furthermore, many grid cells can contain substantially fewer active boids than the number of available threads, reducing the amount of useful work and reuse performed by a block.
+
+The block-size experiment is consistent with this explanation: the 32-thread shared kernel substantially outperformed the 64- and 128-thread variants at 20,000 boids. However, even after this improvement, the final shared-memory implementation remained slower than the corresponding non-shared coherent implementation throughout the controlled boid-count experiment.
+
+The failed packed-cell and occupied-cell experiments were also useful results. Reducing the apparent number of blocks or avoiding empty-cell launches did not necessarily reduce total frame time once the additional organization and preprocessing work was included. More fine-grained CUDA profiling would be necessary to determine the contribution of global-memory traffic, shared-memory traffic, synchronization, occupancy, and individual kernel execution times to the measured difference.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--
 Extra-credit implementation details and any additional performance comparisons will be documented here separately so that they can be distinguished from the required baseline results.
+-->
 
 <!-- Extra-credit results to be added after implementation and testing. -->
