@@ -317,43 +317,37 @@ The failed packed-cell and occupied-cell experiments were also useful results. R
 
 
 
-## 3. Visual Stress Testing
+# Additional Visual Stress Testing
 
-After completing the controlled performance experiments above, I also informally increased the number of boids beyond the range used for my required benchmarks. My required boid-count experiments stopped at 40,000 boids, so I wanted to see how the final implementation behaved visually when the flock size was increased substantially further.
-
+After completing the required and extra-credit performance experiments above, I also informally increased the number of boids beyond the range used for my controlled benchmarks. The controlled boid-count experiments stopped at 40,000 boids, so I wanted to see how the final implementation behaved visually when the flock size was increased substantially further.
 
 For these runs, I enabled visualization and used the coherent uniform-grid implementation with both extra-credit optimizations enabled. These recordings are intended as **qualitative stress tests rather than controlled performance measurements**. In particular, the FPS values visible in the window titles are individual application-level readings from the recorded runs and should not be interpreted in the same way as the repeated measurements and averaged results reported in the performance sections above.
 
-### 100,000 Boids
+## 100,000 Boids
 
 ![100,000-boid visual stress test](images/boids_shared_100000.gif)
 
 At 100,000 boids, the simulation remained highly responsive and the flock still exhibited clearly visible spatial structure. Individual groups, gaps, and changes in the overall flock shape remained relatively easy to distinguish despite the much larger number of particles. During the recorded run, the application-level framerate visible in the window was approximately 690 FPS.
 
-
-### 150,000 Boids
+## 150,000 Boids
 
 ![150,000-boid visual stress test](images/boids_shared_150000.gif)
 
 At 150,000 boids, the increase in visual density became considerably more apparent. Large-scale flock structures were still visible, but individual particles and smaller gaps became more difficult to distinguish as more boids occupied the same simulation volume. The application nevertheless remained responsive during the recorded run, with the displayed framerate around 486 FPS.
 
-
-### 200,000 Boids
+## 200,000 Boids
 
 ![200,000-boid visual stress test](images/boids_shared_200000.gif)
 
 At 200,000 boids, the flock became visually very dense. The simulation still produced recognizable large-scale structures and motion, although the number of rendered particles increasingly obscured the finer structure that was much easier to see at lower boid counts. The displayed application-level framerate during the recorded run was approximately 368 FPS.
 
+## Observations
 
-### Observations
-
-These stress tests demonstrate a different aspect of the implementation than the controlled benchmarks above. The formal experiments were designed to compare algorithms under consistent conditions, whereas these runs were intended to explore what happens when the simulation is pushed well beyond the required benchmark range while visualization remains enabled.
+These stress tests demonstrate a different aspect of the implementation than the controlled benchmarks above. The formal experiments were designed to compare algorithms under consistent conditions, whereas these runs were intended to explore what happens when the simulation is pushed well beyond the controlled benchmark range while visualization remains enabled.
 
 The progression from 100,000 to 200,000 boids shows that increasing the flock size affects not only performance but also the readability of the visualization. At 100,000 boids, local structures remain comparatively distinct. By 200,000 boids, the flock appears much more like a dense moving volume, and individual structures become harder to separate visually.
 
 I also tested the simulation informally at **250,000 boids**. I did not include that run as another representative GIF because the three recordings above already illustrate the progression in visual density. None of these high-boid-count runs were included in the controlled performance graphs or used to draw quantitative conclusions about scaling.
-
-
 
 
 
