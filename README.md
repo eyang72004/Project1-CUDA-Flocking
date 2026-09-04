@@ -152,7 +152,7 @@ I compared the scattered uniform-grid implementation using two grid-cell widths.
 Our baseline used a cell width of twice the maximum interaction radius (`2R`). With this cell width, the neighbor search needs to inspect at most 8 relevant cells in 3D.
 
 
-I then changed the cell width to the interaction radius (`R`) and searched the full 3 x 3 x 3 neighborhood (or 27 cells).
+I then changed the cell width to the interaction radius (`R`) and searched the full 3 x 3 x 3 neighborhood (or 27 cells). For this experiment, I temporarily replaced the baseline 2R neighbor-cell traversal with the full 3 x 3 x 3 traversal, then restored the required 2R baseline implementation afterward.
 
 
 The comparison used **20,000 boids**, `VISUALIZE = 0`, a block size of 128, Release x64, and Vertical Sync disabled.
@@ -219,15 +219,26 @@ I compared grid looping against the corresponding fixed-cell-search implementati
 | Implementation | Grid Looping OFF (FPS) | Grid Looping ON (FPS) | Change |
 |:---|---:|---:|---:|
 | Scattered Grid | 825.00 | 1561.18 | +89.23% |
-| Coherent Grid | 2179.24 | 2024.48 | -7.10% |
-
-
+| Coherent Grid | 1909.74 | 1968.52 | +3.08% |
 
 The scattered-grid implementation improved from **825.00 FPS to 1561.18 FPS**, corresponding to an approximately **89.23% increase**, or about **1.89x** the original framerate.
 
-The coherent implementation, on the other hand, behaved a bit differently. Its measured framerate decreased from **2179.24 FPS to 2024.48 FPS**, an approximately **7.10% reduction**.
+For the coherent implementation, I performed a fresh paired verification because an earlier benchmarking session produced a substantially different absolute baseline framerate. In this verification, the fixed-search implementation measured **1909.74 FPS**, while grid looping measured **1968.52 FPS**, corresponding to an approximately **3.08% increase**.
 
 
+
+### Analysis
+
+The scattered result suggests that dynamically restricting the grid-cell search substantially reduced unnecessary neighbor-search work for this configuration. Since the scattered representation must additionally follow the sorted particle-index array to access position and velocity data, avoiding unnecessary candidate cells can eliminate relatively expensive work.
+
+The coherent result was much closer to break-even. In the fresh paired verification, grid looping improved the measured framerate by approximately **3.08%**. Because the coherent representation already places boid data into contiguous grid-cell ranges, the potential benefit from reducing cell traversal must compete with the additional arithmetic and control flow required to compute dynamic search bounds for each boid.
+
+The relatively small coherent difference, together with the variability I observed between separate benchmarking sessions, does not provide strong evidence that grid looping consistently improves coherent-grid performance on this system. I therefore interpret the coherent result more cautiously than the much larger scattered-grid improvement.
+
+I did not separately instrument the number of cells visited, candidate boids tested, or memory transactions, so these explanations are hypotheses consistent with the implementation and the measured results rather than isolated measurements of the underlying cause.
+
+
+<!--
 ### Analysis
 
 The scattered result suggests that dynamically restricting the grid-cell search substantially reduced unnecessary neighbor-search work for this configuration. Since the scattered representation must additionally follow the sorted particle-index array to access position and velocity data, avoiding unnecessary candidate cells can eliminate relatively expensive work.
@@ -236,7 +247,7 @@ The same optimization did not enhance the coherent implementation in this experi
 
 
 I did not separately instrument the number of cells visited, candidate boids tested, or memory transactions, so these explanations are hypotheses consistent with the implementation and the measured results rather than isolated measurements of the underlying cause.
-
+-->
 
 
 ## 2. Shared-Memory Optimization
