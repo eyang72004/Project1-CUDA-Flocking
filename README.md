@@ -163,6 +163,32 @@ However, coherence is not free: the semi-coherent implementation must reorder th
 The 40,000-boid coherent result is unusually high relative to the rest of its curve, so I retained it rather than smoothing it away. The overall crossover is nevertheless consistent with the expected tradeoff: reordering introduces additional work every frame, while its benefit comes from improving locality during the subsequent neighbor search.
 
 
+### Additional High-Boid Scaling Comparison
+
+I also ran a second scattered-vs-coherent comparison over a wider range of boid counts. I wanted to get a better look at where the two implementations cross over and see whether the difference at 40,000 boids would continue as I pushed the simulation further.
+
+I tested `1,000`, `10,000`, `20,000`, `40,000`, `100,000`, and `200,000` boids with `VISUALIZE = 0`, a block size of 128 threads, Release x64, Vertical Sync disabled, and the baseline `2R` grid width. I also disabled both extra-credit search optimizations (`GRID_LOOPING_OPTIMIZATION = 0` and `SHARED_MEMORY_OPTIMIZATION = 0`) so I was comparing the baseline scattered and coherent implementations. I took five settled FPS readings for each configuration and averaged them.
+
+| Boids | Scattered FPS | Coherent FPS | Faster Implementation | Relative Advantage |
+|---:|---:|---:|:---|---:|
+| 1,000 | **2719.10** | 2433.48 | Scattered | 11.74% |
+| 10,000 | 1673.90 | **1957.00** | Coherent | 16.91% |
+| 20,000 | 1569.72 | **1890.70** | Coherent | 20.45% |
+| 40,000 | 1136.82 | **1907.84** | Coherent | 67.82% |
+| 100,000 | 531.12 | **1386.22** | Coherent | 161.00% |
+| 200,000 | 244.58 | **863.82** | Coherent | 253.19% |
+
+![Scattered vs. Coherent Grid Scaling](images/scattered_vs_coherent_scaling_bar.png)
+
+This time, the crossover between the two implementations was pretty clear. Scattered was still faster at 1,000 boids by about **11.74%**, but coherent pulled ahead by 10,000 boids and stayed ahead for the rest of the test. The difference also grew quite a bit with the boid count. At 100,000 boids, coherent ran at **1386.22 FPS** compared with **531.12 FPS** for scattered. At 200,000 boids, the difference was **863.82 FPS vs. 244.58 FPS**, or about **3.53x** the scattered framerate.
+
+I think the crossover makes sense given how the two implementations work. The coherent version has to spend extra time reordering the position and velocity arrays every simulation step. At a small boid count, that extra work can cancel out the benefit of reordering the data. As the number of boids grows, though, the neighbor search becomes more expensive. The coherent version can directly access boids that have been reordered into their grid-cell ranges, while the scattered version still has to go through the sorted particle-index array to get back to the original position and velocity arrays.
+
+The larger tests also made the scaling difference easier to see. From 40,000 to 200,000 boids, scattered dropped from **1136.82 FPS to 244.58 FPS**, while coherent dropped from **1907.84 FPS to 863.82 FPS**. Both slow down as I add more boids, but coherent holds onto much more of its performance as the simulation gets larger.
+
+These numbers are still application-level FPS, not timings of just the neighbor-search kernel. They include sorting, building the grid and cell ranges, reordering the data for coherent search, updating positions, and the rest of the simulation step. Because of that, I would not claim that one specific GPU effect caused the difference. What I can say from these measurements is that the coherent implementation scaled much better than the scattered implementation over this larger range of boid counts.
+
+
 
 ## 4. Cell Width: 8 Vs. 27 Neighboring Cells
 
