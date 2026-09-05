@@ -114,6 +114,26 @@ We also see that the **scattered and coherent grid implementations were consider
 I therefore was not able to identify one block size that was best for all three implementations. The naive implementation was relatively stable from 64 through 256 threads, while the grid implementations showed much larger non-monotonic changes. A grid-based simulation step contains several different operations, including grid-index computation, sorting, cell-range construction, neighbor searching, and, for the coherent version, data reordering. Changing the global block size therefore affects several CUDA kernels with different workloads rather than one uniform computation. Since I measured the complete application frame, these results show the overall performance effect of changing block size but do not isolate which kernel is responsible for each peak or decline.
 
 
+### Additional Nsight Compute Block-Size Profiling
+
+To complement the application-level block-size measurements above, I profiled the scattered uniform-grid neighbor-search kernel directly with **NVIDIA Nsight Compute**. This additional experiment used **40,000 boids**, `VISUALIZE = 0`, Release x64, Vertical Sync disabled, the baseline `2R` grid width, and both extra-credit search optimizations disabled (`GRID_LOOPING_OPTIMIZATION = 0`, `SHARED_MEMORY_OPTIMIZATION = 0`). I varied only the CUDA block size and profiled one launch of `kernUpdateVelNeighborSearchScattered` using Nsight Compute's `basic` metric set with application replay.
+
+![Nsight Compute Scattered-Grid kernel runtime vs. Block Size](images/nsight_scattered_40k_block_size_runtime.png)
+
+| Block Size (threads) | Grid Size (blocks) | Kernel Duration (µs) | Compute Throughput | Memory Throughput | Achieved Occupancy | Theoretical Occupancy |
+|---:|---:|---:|---:|---:|---:|---:|
+| 128 | 313 | **244.06** | 18.55% | 64.97% | 66.92% | 83.33% |
+| 256 | 157 | 256.54 | 17.61% | 59.97% | **70.38%** | 83.33% |
+| 512 | 79 | 254.88 | 17.76% | 57.72% | 62.15% | 66.67% |
+| 1024 | 40 | 255.33 | 17.68% | 57.73% | 62.91% | 66.67% |
+
+Among these four configurations, **128 threads per block produced the lowest isolated neighbor-search kernel runtime at 244.06 µs**. Relative to the 128-thread result, the 256-, 512-, and 1024-thread configurations were approximately **5.11%**, **4.43%**, and **4.62%** slower, respectively.
+
+Interestingly, the highest occupancy did not correspond to the fastest kernel in these measurements. The 256-thread configuration achieved the highest measured occupancy at **70.38%**, but it also produced the longest kernel runtime of the four configurations. At 512 and 1024 threads per block, theoretical occupancy fell from **83.33% to 66.67%**; Nsight attributed this limitation to the kernel's register requirements. Across all four configurations, measured memory throughput was substantially higher than compute throughput, and Nsight also reported partial-wave/tail and workload-imbalance effects.
+
+I treated these kernel timings separately from the application-level FPS results above. The FPS measurements include the complete simulation step, including grid construction, sorting, cell-range construction, position updates, and other application overhead, while this Nsight experiment isolates `kernUpdateVelNeighborSearchScattered`. The two measurements therefore answer different performance questions.
+
+
 ## 3. Semi-Coherent Uniform Grid Performance
 
 The semi-coherent grid did produce performance improvements over the scattered grid at some boid counts, but **the improvement was not consistent across the complete benchmark range**.
